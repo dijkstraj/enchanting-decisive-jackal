@@ -1,0 +1,107 @@
+<!doctype html>
+<html>
+  <head>
+    <title>move my name</title>
+    <style>
+      * { margin: 0; padding: 0; overflow: hidden; }
+      .person {
+        position: absolute;
+        border: solid 1px black;
+        display: inline-block;
+      }
+    </style>
+  </head>
+  <body>
+    <form id="form">
+      <input name="room" type="text" placeholder="room" value="town square"/>
+      <input name="name" type="text" placeholder="nickname" value="anonymous"/>
+      <input name="connect" type="submit" value="connect"/>
+    </form>
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+      function connect(room, name) {
+        const socket = io({
+          query: {
+            room,
+            nickname: name
+          }
+        });
+        const people = {};
+
+        function update(dt) {
+          Object.values(people)
+            .forEach(p => {
+              // console.log(dt, p.x, p.targetX);
+              p.x += dt * (p.targetX - p.x);
+              p.y += dt * (p.targetY - p.y);
+            });
+        }
+
+        function draw() {
+          Object.values(people)
+            .forEach(p => p.avatar.style = `left: ${p.x * window.innerWidth}px; top: ${p.y * window.innerHeight}px`);
+        }
+
+        let lastRender = 0;
+        function loop(timestamp) {
+          const progress = timestamp - lastRender;
+
+          update(progress / 1000);
+          draw();
+
+          lastRender = timestamp;
+          window.requestAnimationFrame(loop);
+        }
+
+        socket.on('connect', () => {
+          console.log('connected!');
+          socket.on('joined the fray', (name) => {
+            console.log(name, 'has joined the fray');
+          });
+          socket.on('left the building', (name) => {
+            console.log(name, 'has left the building');
+            delete people[name];
+          });
+          socket.on('update the mood', (msg) => {
+            console.log('message: ', msg);
+            if (!people[msg.name]) {
+              const avatar = document.createElement('div');
+              avatar.className = 'person';
+              avatar.style = `left: ${msg.x * window.innerWidth}px; top: ${msg.y * window.innerHeight}px`;
+              avatar.textContent = msg.name;
+              document.body.appendChild(avatar);
+              people[msg.name] = {
+                x: msg.x,
+                y: msg.y,
+                avatar
+              };
+            }
+            people[msg.name].targetX = msg.x;
+            people[msg.name].targetY = msg.y;
+          });
+
+          document.addEventListener('click', (event) => {
+            event.preventDefault();
+            console.log('click', event);
+            socket.emit('mood update', {
+              x: event.clientX / window.innerWidth,
+              y: event.clientY / window.innerHeight
+            });
+          });
+
+          // start the render loop
+          window.requestAnimationFrame(loop);
+        });
+      }
+
+      document.addEventListener('DOMContentLoaded', function() {
+        const form = document.getElementById('form');
+        form.addEventListener('submit', (event) => {
+          console.log('room', form.elements['room'].value);
+          event.preventDefault();
+          connect(form.elements['room'].value, form.elements['name'].value);
+        });
+      });
+    </script>
+  </body>
+</html>
